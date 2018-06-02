@@ -4,12 +4,19 @@ PROJECT_ROOT = '/home/mick/dev/pyluxcore_test'
 sys.path.append(os.path.join(PROJECT_ROOT, 'lib'))
 import pyluxcore
 import glob
+import numpy as np
+from functools import reduce
+import operator
+from collections import OrderedDict
 
 from luxcore import add_object, define_mesh, render
 
 
 # control whether to generate cfg&scn&ply or render images
-GENERATE_MODEL = True
+GENERATE_MODEL = False
+
+# flat prism or smoothly shaded lens
+FLAT = True
 
 
 def main():
@@ -59,86 +66,97 @@ def main():
   props.Set(pyluxcore.Property("scene.materials."+prism_mat+".cauchyc", 0.00354))
   scene.Parse(props)
 
-  vertices = [
-    (-1, -1, 0),
-    (1, -1, 0),
-    (0, 0.41, 0),
-
-    (-1, -1, 0),
-    (1, -1, 0),
-    (-1, -1, 2),
-    (1, -1, 2),
-
-    (1, -1, 0),
-    (0, 0.41, 0),
-    (1, -1, 2),
-    (0, 0.41, 2),
-
-    (0, 0.41, 0),
-    (-1, -1, 0),
-    (0, 0.41, 2),
-    (-1, -1, 2),
-
-    (-1, -1, 2),
-    (1, -1, 2),
-    (0, 0.41, 2),
-  ]
-  faces = [
-    (0, 2, 1),
-
-    (3, 4, 5),
-    (4, 6, 5),
-
-    (7, 8, 9),
-    (8, 10, 9),
-
-    (11, 12, 13),
-    (12, 14, 13),
-
-    (15, 16, 17),
-  ]
-  # vertices = [
-  #   (-1, -1, -0.2),
-  #   (1, -1, -0.2),
-  #   (0, 0.41, -0.2),
-  #
-  #   (-1, -1, 0),
-  #   (1, -1, 0),
-  #   (-1, -1, 2),
-  #   (1, -1, 2),
-  #
-  #   (1, -1, 0),
-  #   (0, 0.41, 0),
-  #   (1, -1, 2),
-  #   (0, 0.41, 2),
-  #
-  #   (-1, -1, 0),
-  #   (-1, -1, 2),
-  #
-  #   (-1, -1, 2.2),
-  #   (1, -1, 2.2),
-  #   (0, 0.41, 2.2),
-  # ]
-  # faces = [
-  #   (0, 2, 1),
-  #
-  #   (3, 4, 5),
-  #   (4, 6, 5),
-  #
-  #   (7, 8, 9),
-  #   (8, 10, 9),
-  #
-  #   # (11, 12, 13),
-  #   # (12, 14, 13),
-  #   (8, 11, 12),
-  #   (12, 10, 8),
-  #
-  #   (13, 14, 15),
-  # ]
-  prism = (vertices, faces)
-
   name = "lens0"
-  define_mesh(scene, name, prism[0], prism[1], build_normals=GENERATE_MODEL)
+  if FLAT:
+    vertices = [
+      (-1, -1, 0),
+      (1, -1, 0),
+      (0, 0.41, 0),
+
+      (-1, -1, 0),
+      (1, -1, 0),
+      (-1, -1, 2),
+      (1, -1, 2),
+
+      (1, -1, 0),
+      (0, 0.41, 0),
+      (1, -1, 2),
+      (0, 0.41, 2),
+
+      (0, 0.41, 0),
+      (-1, -1, 0),
+      (0, 0.41, 2),
+      (-1, -1, 2),
+
+      (-1, -1, 2),
+      (1, -1, 2),
+      (0, 0.41, 2),
+    ]
+    faces = [
+      (0, 2, 1),
+
+      (3, 4, 5),
+      (4, 6, 5),
+
+      (7, 8, 9),
+      (8, 10, 9),
+
+      (11, 12, 13),
+      (12, 14, 13),
+
+      (15, 16, 17),
+    ]
+    define_mesh(scene, name, vertices, faces, build_normals=GENERATE_MODEL)
+  else:
+    # bottom/top, front/middle/heck, left/center/right
+    faces = {
+      "b1": ("bhl", "bml", "bhr"),
+      "b2": ("bml", "bmr", "bhr"),
+      "b3": ("bml", "bfc", "bmr"),
+      "t1": ("thr", "tmr", "thl"),
+      "t2": ("tmr", "tml", "thl"),
+      "t3": ("tmr", "tfc", "tml"),
+
+      "h1": ("bhr", "thr", "bhl"),
+      "h2": ("thr", "thl", "bhl"),
+      "hr1": ("bmr", "tmr", "bhr"),
+      "hr2": ("tmr", "thr", "bhr"),
+      "tr1": ("bfc", "tfc", "bmr"),
+      "tr2": ("tfc", "tmr", "bmr"),
+      "tl1": ("bml", "tml", "bfc"),
+      "tl2": ("tml", "tfc", "bfc"),
+      "hl1": ("bhl", "thl", "bml"),
+      "hl2": ("thl", "tml", "bml"),
+    }
+    vertices = {
+      "bhl": ((-1, -1, 0), ["hl1"]),
+      "thl": ((-1, -1, 2), ["hl2"]),
+      "bhr": ((1, -1, 0), ["hr1"]),
+      "thr": ((1, -1, 2), ["hr2"]),
+      "bmr": ((0.8, 0, 0), ["hr1", "tr2"]),
+      "tmr": ((0.8, 0, 2), ["hr1", "tr2"]),
+      "bfc": ((0, 1, 0), ["tr1", "tl2"]),
+      "tfc": ((0, 1, 2), ["tr1", "tl2"]),
+      "bml": ((-0.8, 0, 0), ["tl1", "hl2"]),
+      "tml": ((-0.8, 0, 2), ["tl1", "hl2"]),
+    }
+    # vertices = OrderedDict(vertices)
+    for fk, fv in faces.items():
+      faces[fk] = tuple([list(vertices.keys()).index(p) for p in fv])
+    vertices_npa = np.array([v[0] for v in vertices.values()], dtype=np.float)
+    def face_normal(f):
+      a = vertices_npa[f[1]] - vertices_npa[f[0]]
+      b = vertices_npa[f[2]] - vertices_npa[f[0]]
+      n = np.cross(a,b)
+      return n / np.linalg.norm(n)
+    face_normals = list(map(face_normal, faces.values()))
+    vert2face = [[face_normals[list(faces.keys()).index(fk)] for fk in vv[1]] for vv in vertices.values()]
+    vertex_normals = np.array(list(map(lambda v2f: reduce(operator.add, v2f) if len(v2f)>0 else np.array((0, 0, 0), dtype=np.float), vert2face)))
+    vertex_normals = np.apply_along_axis(lambda x: x / np.linalg.norm(vertex_normals, axis=1), 0, vertex_normals)
+    vertex_normals = list(map(lambda n: tuple(list(n)), vertex_normals))
+    vertices = [vv[0] for vv in vertices.values()]
+    faces = list(faces.values())
+    scene.DefineMesh(name, vertices, faces, vertex_normals, None, None, None, None)
   add_object(scene, name, name, prism_mat, visible=True)
 
   name = "background"
@@ -177,15 +195,7 @@ def main():
     scene.lights.l.position = -0.5 -5 1
     scene.lights.l.target = 0 7 1
     scene.lights.l.radius = 1.1
-    # scene.lights.l.coneangle = 15
-    # scene.lights.l.conedeltaangle = 1
     scene.lights.l.gain = 2000.0 2000.0 2000.0
-    # scene.lights.l2.type = spot
-    # scene.lights.l2.position = 0 0 10
-    # scene.lights.l2.target = 0 0 0
-    # scene.lights.l2.coneangle = 90
-    # # scene.lights.l2.conedeltaangle = 1
-    # scene.lights.l2.gain = 20.0 20.0 20.0
     scene.lights.l2.type = sky2
     scene.lights.l2.gain = 0.0003 0.0003 0.0003
   """)
